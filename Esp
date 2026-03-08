@@ -1,9 +1,8 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
+-- 전역 변수 설정 (토글 상태 저장)
+_G.EspEnabled = false
 
 local function createESP(player)
+    -- 드로잉 객체 생성
     local box = Drawing.new("Square")
     box.Visible = false
     box.Thickness = 1.5
@@ -13,57 +12,75 @@ local function createESP(player)
     healthBar.Visible = false
     healthBar.Thickness = 2
 
-    local function update()
-        local connection
-        connection = RunService.RenderStepped:Connect(function()
-            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player ~= LocalPlayer then
-                local hum = player.Character.Humanoid
-                local hrp = player.Character.HumanoidRootPart
-                local vector, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        -- 1. 토글이 꺼졌거나 플레이어가 없으면 삭제/숨기기
+        if not _G.EspEnabled or not player.Parent then
+            box.Visible = false
+            healthBar.Visible = false
+            if not player.Parent then
+                box:Remove()
+                healthBar:Remove()
+                connection:Disconnect()
+            end
+            return
+        end
 
-                if onScreen and hum.Health > 0 then
-                    -- 거리 기반 크기 계산
-                    local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    local baseSize = (1 / dist) * 2000 
-                    
-                    -- [세로 비율 수정]
-                    -- 가로(width)는 그대로, 세로(height)를 1.8배로 늘림
-                    local width = baseSize
-                    local height = baseSize * 1.8 
-                    
-                    -- 박스 설정 (Y축 위치를 height/2만큼 빼서 캐릭터 중심에 맞춤)
-                    box.Size = Vector2.new(width, height)
-                    box.Position = Vector2.new(vector.X - width/2, vector.Y - height/2)
-                    box.Color = player.TeamColor.Color
-                    box.Visible = true
+        -- 2. 캐릭터 확인 및 위치 계산
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player ~= LocalPlayer then
+            local hum = player.Character.Humanoid
+            local hrp = player.Character.HumanoidRootPart
+            local vector, onScreen = Camera:WorldToViewportPoint(hrp.Position)
 
-                    -- HP ESP (늘어난 박스 높이에 맞춰 정렬)
-                    local healthPct = hum.Health / hum.MaxHealth
-                    -- 박스 왼쪽에서 5픽셀 떨어진 위치에 배치
-                    healthBar.From = Vector2.new(box.Position.X - 5, box.Position.Y + height)
-                    healthBar.To = Vector2.new(box.Position.X - 5, box.Position.Y + height - (height * healthPct))
-                    
-                    healthBar.Color = Color3.fromHSV(healthPct * 0.3, 1, 1) 
-                    healthBar.Visible = true
-                else
-                    box.Visible = false
-                    healthBar.Visible = false
-                end
+            if onScreen and hum.Health > 0 then
+                -- 거리 기반 크기 및 비율 계산
+                local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+                local baseSize = (1 / dist) * 2000 
+                local width = baseSize
+                local height = baseSize * 1.8 
+                
+                -- 박스 업데이트
+                box.Size = Vector2.new(width, height)
+                box.Position = Vector2.new(vector.X - width/2, vector.Y - height/2)
+                box.Color = player.TeamColor.Color
+                box.Visible = true
+
+                -- HP 바 업데이트
+                local healthPct = hum.Health / hum.MaxHealth
+                healthBar.From = Vector2.new(box.Position.X - 5, box.Position.Y + height)
+                healthBar.To = Vector2.new(box.Position.X - 5, box.Position.Y + height - (height * healthPct))
+                healthBar.Color = Color3.fromHSV(healthPct * 0.3, 1, 1) 
+                healthBar.Visible = true
             else
                 box.Visible = false
                 healthBar.Visible = false
-                if not player or not player.Parent then
-                    box:Remove()
-                    healthBar:Remove()
-                    connection:Disconnect()
-                end
             end
-        end)
-    end
-    coroutine.wrap(update)()
+        else
+            box.Visible = false
+            healthBar.Visible = false
+        end
+    end)
 end
 
+-- 초기 플레이어 적용 및 이벤트 연결
 for _, player in pairs(Players:GetPlayers()) do
     if player ~= LocalPlayer then createESP(player) end
 end
 Players.PlayerAdded:Connect(createESP)
+
+-- [Rayfield 토글 연결 부분]
+local Toggle = Tab:CreateToggle({
+   Name = "Player ESP",
+   CurrentValue = false,
+   Flag = "EspToggle",
+   Callback = function(Value)
+      _G.EspEnabled = Value -- 토글 상태를 전역 변수에 저장
+      
+      Rayfield:Notify({
+         Title = "ESP 상태",
+         Content = Value and "ESP가 활성화되었습니다." or "ESP가 비활성화되었습니다.",
+         Duration = 2,
+         Image = 4483362458,
+      })
+   end,
+})
